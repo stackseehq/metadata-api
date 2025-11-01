@@ -22,10 +22,15 @@ describe('Favicon Fetching', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.url).toBeDefined();
-      expect(data.format).toBeDefined();
-      expect(data.source).toBeDefined();
-      expect(data.bytes).toBeGreaterThan(0);
+      // New format: nested structure with favicon, ogImage, metadata
+      expect(data.favicon).toBeDefined();
+      expect(data.favicon.url).toBeDefined();
+      expect(data.favicon.format).toBeDefined();
+      expect(data.favicon.source).toBeDefined();
+      expect(data.favicon.bytes).toBeGreaterThan(0);
+      expect(data.metadata).toBeDefined();
+      expect(data.metadata.title).toBeDefined();
+      // ogImage may or may not be present
     });
 
     test('should fetch Google favicon as JSON', async () => {
@@ -33,9 +38,9 @@ describe('Favicon Fetching', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.url).toBeDefined();
+      expect(data.favicon.url).toBeDefined();
       // Google serves ICO format, which is correctly detected now
-      expect(['png', 'ico']).toContain(data.format);
+      expect(['png', 'ico']).toContain(data.favicon.format);
     });
 
     test('should fetch Stack Overflow favicon as JSON', async () => {
@@ -47,9 +52,9 @@ describe('Favicon Fetching', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.url).toContain('stackoverflow');
+      expect(data.favicon.url).toContain('stackoverflow');
       // Stack Overflow may use either direct fetch or fallback API (due to bot protection)
-      expect(['link-tag', 'fallback-api', 'fallback']).toContain(data.source);
+      expect(['link-tag', 'fallback-api', 'fallback']).toContain(data.favicon.source);
     });
 
     test('should fetch ChatGPT favicon as JSON', async () => {
@@ -57,9 +62,9 @@ describe('Favicon Fetching', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.url).toContain('chatgpt');
+      expect(data.favicon.url).toContain('chatgpt');
       // ChatGPT may use either direct fetch or fallback API (due to bot protection)
-      expect(['link-tag', 'fallback-api', 'fallback']).toContain(data.source);
+      expect(['link-tag', 'fallback-api', 'fallback']).toContain(data.favicon.source);
     });
   });
 
@@ -100,9 +105,9 @@ describe('Favicon Fetching', () => {
 
       const data = await response.json();
       // For non-SVG images, dimensions should match requested size
-      if (data.format !== 'svg') {
-        expect(data.width).toBeLessThanOrEqual(64);
-        expect(data.height).toBeLessThanOrEqual(64);
+      if (data.favicon.format !== 'svg') {
+        expect(data.favicon.width).toBeLessThanOrEqual(64);
+        expect(data.favicon.height).toBeLessThanOrEqual(64);
       }
     });
 
@@ -130,12 +135,12 @@ describe('Favicon Fetching', () => {
 
       const data = await response.json();
       // GitHub has SVG favicon
-      if (data.format === 'svg') {
-        expect(data.width).toBeGreaterThan(0);
-        expect(data.height).toBeGreaterThan(0);
+      if (data.favicon.format === 'svg') {
+        expect(data.favicon.width).toBeGreaterThan(0);
+        expect(data.favicon.height).toBeGreaterThan(0);
         // Should not be 0 (the old broken behavior)
-        expect(data.width).not.toBe(0);
-        expect(data.height).not.toBe(0);
+        expect(data.favicon.width).not.toBe(0);
+        expect(data.favicon.height).not.toBe(0);
       }
     });
 
@@ -149,10 +154,10 @@ describe('Favicon Fetching', () => {
 
       const data = await response.json();
       // Should keep as SVG (smart pass-through)
-      if (data.sourceUrl.endsWith('.svg')) {
-        expect(data.format).toBe('svg');
-        expect(data.width).toBe(256);
-        expect(data.height).toBe(256);
+      if (data.favicon.sourceUrl.endsWith('.svg')) {
+        expect(data.favicon.format).toBe('svg');
+        expect(data.favicon.width).toBe(256);
+        expect(data.favicon.height).toBe(256);
       }
     });
 
@@ -165,9 +170,9 @@ describe('Favicon Fetching', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.format).toBe('png');
-      expect(data.width).toBe(256);
-      expect(data.height).toBe(256);
+      expect(data.favicon.format).toBe('png');
+      expect(data.favicon.width).toBe(256);
+      expect(data.favicon.height).toBe(256);
     });
 
     test('should return correct content-type for SVG pass-through', async () => {
@@ -186,11 +191,11 @@ describe('Favicon Fetching', () => {
 
       const data = await response.json();
       // Google serves ICO - should have proper dimensions now
-      expect(data.width).toBeGreaterThan(0);
-      expect(data.height).toBeGreaterThan(0);
+      expect(data.favicon.width).toBeGreaterThan(0);
+      expect(data.favicon.height).toBeGreaterThan(0);
       // Should not be 0 (the old broken behavior)
-      expect(data.width).not.toBe(0);
-      expect(data.height).not.toBe(0);
+      expect(data.favicon.width).not.toBe(0);
+      expect(data.favicon.height).not.toBe(0);
     });
 
     test('should resize ICO files when size parameter is provided', async () => {
@@ -202,8 +207,8 @@ describe('Favicon Fetching', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.width).toBe(128);
-      expect(data.height).toBe(128);
+      expect(data.favicon.width).toBe(128);
+      expect(data.favicon.height).toBe(128);
     });
   });
 
@@ -217,11 +222,11 @@ describe('Favicon Fetching', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.source).toBe('default');
-      expect(data.format).toBe('svg');
+      expect(data.favicon.source).toBe('default');
+      expect(data.favicon.format).toBe('svg');
       // Fallback SVG should have dimensions
-      expect(data.width).toBeGreaterThan(0);
-      expect(data.height).toBeGreaterThan(0);
+      expect(data.favicon.width).toBeGreaterThan(0);
+      expect(data.favicon.height).toBeGreaterThan(0);
     });
 
     test('should apply size parameter to fallback image', async () => {
@@ -233,10 +238,10 @@ describe('Favicon Fetching', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.source).toBe('default');
-      expect(data.format).toBe('svg');
-      expect(data.width).toBe(128);
-      expect(data.height).toBe(128);
+      expect(data.favicon.source).toBe('default');
+      expect(data.favicon.format).toBe('svg');
+      expect(data.favicon.width).toBe(128);
+      expect(data.favicon.height).toBe(128);
     });
 
     test('should rasterize fallback when format=png is specified', async () => {
@@ -248,10 +253,10 @@ describe('Favicon Fetching', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.source).toBe('default');
-      expect(data.format).toBe('png');
-      expect(data.width).toBe(256);
-      expect(data.height).toBe(256);
+      expect(data.favicon.source).toBe('default');
+      expect(data.favicon.format).toBe('png');
+      expect(data.favicon.width).toBe(256);
+      expect(data.favicon.height).toBe(256);
     });
   });
 
@@ -289,10 +294,10 @@ describe('Favicon Fetching', () => {
 
       const data = await response.json();
       // Should fetch favicon from the redirected domain (vemetric.com)
-      expect(data.sourceUrl).toContain('vemetric.com');
-      expect(data.sourceUrl).not.toContain('vemetrics.com');
-      expect(data.source).toBe('link-tag');
-      expect(data.format).toBeDefined();
+      expect(data.favicon.sourceUrl).toContain('vemetric.com');
+      expect(data.favicon.sourceUrl).not.toContain('vemetrics.com');
+      expect(data.favicon.source).toBe('link-tag');
+      expect(data.favicon.format).toBeDefined();
     });
 
     test('should handle redirected domain same as direct access', async () => {
@@ -313,9 +318,9 @@ describe('Favicon Fetching', () => {
       const directData = await directResponse.json();
 
       // Both should return the same favicon
-      expect(redirectData.sourceUrl).toBe(directData.sourceUrl);
-      expect(redirectData.format).toBe(directData.format);
-      expect(redirectData.source).toBe(directData.source);
+      expect(redirectData.favicon.sourceUrl).toBe(directData.favicon.sourceUrl);
+      expect(redirectData.favicon.format).toBe(directData.favicon.format);
+      expect(redirectData.favicon.source).toBe(directData.favicon.source);
     });
   });
 });

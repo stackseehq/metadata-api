@@ -17,14 +17,24 @@ const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 /**
+ * Metadata extracted from page
+ */
+export interface PageMetadata {
+  title?: string;
+  description?: string;
+  siteName?: string;
+}
+
+/**
  * Find all possible favicon URLs for a given website
  */
 export async function findFavicons(
   url: string,
   config: AppConfig,
   size?: number
-): Promise<FaviconSource[]> {
+): Promise<{ favicons: FaviconSource[]; metadata: PageMetadata }> {
   const favicons: FaviconSource[] = [];
+  const metadata: PageMetadata = {};
 
   // Ensure URL has protocol
   const targetUrl = url.startsWith('http') ? url : `https://${url}`;
@@ -35,6 +45,19 @@ export async function findFavicons(
     const finalParsedUrl = new URL(finalUrl);
     const finalBaseUrl = `${finalParsedUrl.protocol}//${finalParsedUrl.hostname}`;
     const $ = cheerio.load(html);
+
+    // Extract metadata
+    metadata.title =
+      $('meta[property="og:title"]').attr('content') ||
+      $('meta[name="twitter:title"]').attr('content') ||
+      $('title').text();
+
+    metadata.description =
+      $('meta[property="og:description"]').attr('content') ||
+      $('meta[name="twitter:description"]').attr('content') ||
+      $('meta[name="description"]').attr('content');
+
+    metadata.siteName = $('meta[property="og:site_name"]').attr('content');
 
     // Extract favicons from HTML (only link tags, no OG images)
     favicons.push(...extractFromLinkTags($, finalBaseUrl));
@@ -73,7 +96,10 @@ export async function findFavicons(
   }
 
   // Sort by score (highest first) and return
-  return favicons.sort((a, b) => b.score - a.score);
+  return {
+    favicons: favicons.sort((a, b) => b.score - a.score),
+    metadata,
+  };
 }
 
 /**

@@ -7,8 +7,9 @@ import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { AppConfig } from './lib/config';
-import type { FaviconResult, OutputFormat } from './types';
+import type { FaviconResult, OGImageResult, ImageInfo, OutputFormat } from './types';
 import { findFavicons, fetchBestFavicon } from './lib/favicon-finder';
+import { findOGImages, fetchBestOGImage } from './lib/og-finder';
 import { processImage } from './lib/image-processor';
 import { queryParamsSchema } from './lib/validators';
 import {
@@ -94,6 +95,151 @@ export function createApp(config: AppConfig) {
     }
   });
 
+  // OpenGraph image endpoint - uses /og/ prefix
+  app.get('/og/:url{.+}', async (c) => {
+    try {
+      // Extract request headers for analytics
+      const requestHeaders = {
+        origin: c.req.header('origin'),
+        referer: c.req.header('referer'),
+        ip: getClientIp(c) || undefined,
+      };
+
+      // Get URL from path parameter
+      const urlParam = c.req.param('url');
+
+      // Validate query parameters with Zod
+      const schema = queryParamsSchema(config.BLOCK_PRIVATE_IPS);
+      const parseResult = schema.safeParse({
+        url: urlParam,
+        response: c.req.query('response'),
+        size: c.req.query('size'),
+        format: c.req.query('format'),
+        default: c.req.query('default'),
+      });
+
+      // Handle validation errors
+      if (!parseResult.success) {
+        const headers = generateErrorHeaders(config);
+        const firstError = parseResult.error.issues[0];
+        const errorMessage = firstError ? firstError.message : 'Invalid request parameters';
+        return c.json({ error: errorMessage }, 400, headers);
+      }
+
+      const { url, response, size, format, default: defaultImage } = parseResult.data;
+
+      // Find OG images
+      const timeoutPromise = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), config.REQUEST_TIMEOUT)
+      );
+      const ogStart = Date.now();
+      const result = await Promise.race([
+        new Promise<
+          | {
+              image: { data: Buffer; format: string; source: string; url: string };
+              metadata: { title?: string; description?: string; siteName?: string };
+            }
+          | null
+        >(
+          // oxlint-disable-next-line no-async-promise-executor
+          async (resolve) => {
+            try {
+              const { images, metadata } = await findOGImages(url, config);
+              if (images == null || images.length === 0) {
+                resolve(null);
+              } else {
+                const image = await fetchBestOGImage(images, config);
+                resolve(image ? { image, metadata } : null);
+              }
+            } catch {
+              resolve(null);
+            }
+          }
+        ),
+        timeoutPromise,
+      ]);
+
+      if (!result || !result.image || !result.image.data) {
+        logFaviconFetch({
+          url,
+          faviconUrl: result?.image?.url,
+          source: result?.image?.source,
+          response,
+          format: result?.image?.format || format,
+          size,
+          success: false,
+          duration: Date.now() - ogStart,
+          error: 'Failed to fetch OG image',
+          headers: requestHeaders,
+        });
+        return handleFallback(c, config, response, defaultImage, size, format);
+      }
+
+      const { image, metadata } = result;
+
+      // Log successful OG image fetch
+      logFaviconFetch({
+        url,
+        faviconUrl: image.url,
+        response,
+        size,
+        source: image.source,
+        format: image.format,
+        success: true,
+        duration: Date.now() - ogStart,
+        headers: requestHeaders,
+      });
+
+      // Process image if needed
+      const processed = await processImage(image.data, {
+        size,
+        format,
+      });
+
+      // Return response based on response type
+      if (response === 'json') {
+        // Build API URL for the processed image
+        const requestUrl = new URL(c.req.url);
+        const apiUrl = new URL(requestUrl.origin + '/og/' + (c.req.param('url') || url));
+        if (size) {
+          apiUrl.searchParams.set('size', size.toString());
+        }
+        if (format) {
+          apiUrl.searchParams.set('format', format);
+        }
+
+        const ogResult: OGImageResult = {
+          url: apiUrl.toString(),
+          sourceUrl: image?.url || 'unknown',
+          title: metadata.title,
+          description: metadata.description,
+          siteName: metadata.siteName,
+          width: processed.width,
+          height: processed.height,
+          format: processed.format,
+          bytes: processed.bytes,
+          source: image.source,
+        };
+
+        const headers = generateSuccessHeaders(config, processed.data);
+        return c.json(ogResult, 200, headers);
+      }
+
+      // Return image
+      const headers = generateSuccessHeaders(config, processed.data);
+      const contentType = getContentTypeFromFormat(processed.format);
+
+      return c.body(new Uint8Array(processed.data), 200, {
+        ...headers,
+        'Content-Type': contentType,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Error processing OG image request');
+      const headers = generateErrorHeaders(config);
+      return c.json({ error: 'Internal server error' }, 500, headers);
+    }
+  });
+
   // Main favicon endpoint - uses path parameter for URL
   app.get('/:url{.+}', async (c) => {
     try {
@@ -127,22 +273,45 @@ export function createApp(config: AppConfig) {
 
       const { url, response, size, format, default: defaultImage } = parseResult.data;
 
-      // Find favicons
+      // Find both favicons and OG images in parallel
       const timeoutPromise = new Promise<null>((resolve) =>
         setTimeout(() => resolve(null), config.REQUEST_TIMEOUT)
       );
-      const faviconStart = Date.now();
-      const favicon = await Promise.race([
-        new Promise<{ data: Buffer; format: string; source: string; url: string } | null>(
+      const fetchStart = Date.now();
+      const result = await Promise.race([
+        new Promise<
+          | {
+              favicon: { data: Buffer; format: string; source: string; url: string } | null;
+              ogImage: { data: Buffer; format: string; source: string; url: string } | null;
+              metadata: { title?: string; description?: string; siteName?: string };
+            }
+          | null
+        >(
           // oxlint-disable-next-line no-async-promise-executor
           async (resolve) => {
             try {
-              const favicons = await findFavicons(url, config, size);
-              if (favicons == null || favicons.length === 0) {
-                resolve(null);
-              } else {
-                resolve(await fetchBestFavicon(favicons, config));
-              }
+              // Fetch favicons and OG images in parallel (they both parse the same HTML)
+              const [faviconData, ogData] = await Promise.all([
+                findFavicons(url, config, size),
+                findOGImages(url, config),
+              ]);
+
+              // Use metadata from whichever source found it (prefer OG data as it's more complete)
+              const metadata = {
+                title: ogData.metadata.title || faviconData.metadata.title,
+                description: ogData.metadata.description || faviconData.metadata.description,
+                siteName: ogData.metadata.siteName || faviconData.metadata.siteName,
+              };
+
+              // Fetch best images from both sources
+              const [favicon, ogImage] = await Promise.all([
+                faviconData.favicons.length > 0
+                  ? fetchBestFavicon(faviconData.favicons, config)
+                  : null,
+                ogData.images.length > 0 ? fetchBestOGImage(ogData.images, config) : null,
+              ]);
+
+              resolve({ favicon, ogImage, metadata });
             } catch {
               resolve(null);
             }
@@ -151,21 +320,23 @@ export function createApp(config: AppConfig) {
         timeoutPromise,
       ]);
 
-      if (!favicon || !favicon.data) {
+      if (!result || !result.favicon || !result.favicon.data) {
         logFaviconFetch({
           url,
-          faviconUrl: favicon?.url,
-          source: favicon?.source,
+          faviconUrl: result?.favicon?.url,
+          source: result?.favicon?.source,
           response,
-          format: favicon?.format || format,
+          format: result?.favicon?.format || format,
           size,
           success: false,
-          duration: Date.now() - faviconStart,
+          duration: Date.now() - fetchStart,
           error: 'Failed to fetch favicon',
           headers: requestHeaders,
         });
         return handleFallback(c, config, response, defaultImage, size, format);
       }
+
+      const { favicon, ogImage, metadata } = result;
 
       // Log successful favicon fetch
       logFaviconFetch({
@@ -176,49 +347,85 @@ export function createApp(config: AppConfig) {
         source: favicon.source,
         format: favicon.format,
         success: true,
-        duration: Date.now() - faviconStart,
+        duration: Date.now() - fetchStart,
         headers: requestHeaders,
       });
 
-      // Process image if needed
-      const processed = await processImage(favicon.data, {
+      // Process favicon image
+      const processedFavicon = await processImage(favicon.data, {
         size,
         format,
       });
 
       // Return response based on response type
       if (response === 'json') {
-        // Build API URL for the processed image
+        // Build API URLs
         const requestUrl = new URL(c.req.url);
-        // Use the original path parameter to preserve user input format
-        const apiUrl = new URL(requestUrl.origin + '/' + (c.req.param('url') || url));
+        const faviconApiUrl = new URL(requestUrl.origin + '/' + (c.req.param('url') || url));
         if (size) {
-          apiUrl.searchParams.set('size', size.toString());
+          faviconApiUrl.searchParams.set('size', size.toString());
         }
         if (format) {
-          apiUrl.searchParams.set('format', format);
+          faviconApiUrl.searchParams.set('format', format);
         }
-        // Don't include response=json since we want the image URL
 
-        const result: FaviconResult = {
-          url: apiUrl.toString(),
-          sourceUrl: favicon?.url || 'unknown',
-          width: processed.width,
-          height: processed.height,
-          format: processed.format,
-          bytes: processed.bytes,
+        // Build favicon info
+        const faviconInfo: ImageInfo = {
+          url: faviconApiUrl.toString(),
+          sourceUrl: favicon.url,
+          width: processedFavicon.width,
+          height: processedFavicon.height,
+          format: processedFavicon.format,
+          bytes: processedFavicon.bytes,
           source: favicon.source,
         };
 
-        const headers = generateSuccessHeaders(config, processed.data);
-        return c.json(result, 200, headers);
+        // Build OG image info if available
+        let ogImageInfo: ImageInfo | undefined;
+        if (ogImage) {
+          const processedOG = await processImage(ogImage.data, {
+            size,
+            format,
+          });
+
+          const ogApiUrl = new URL(requestUrl.origin + '/og/' + (c.req.param('url') || url));
+          if (size) {
+            ogApiUrl.searchParams.set('size', size.toString());
+          }
+          if (format) {
+            ogApiUrl.searchParams.set('format', format);
+          }
+
+          ogImageInfo = {
+            url: ogApiUrl.toString(),
+            sourceUrl: ogImage.url,
+            width: processedOG.width,
+            height: processedOG.height,
+            format: processedOG.format,
+            bytes: processedOG.bytes,
+            source: ogImage.source,
+          };
+        }
+
+        const faviconResult: FaviconResult = {
+          favicon: faviconInfo,
+          ogImage: ogImageInfo,
+          metadata: {
+            title: metadata.title,
+            description: metadata.description,
+            siteName: metadata.siteName,
+          },
+        };
+
+        const headers = generateSuccessHeaders(config, processedFavicon.data);
+        return c.json(faviconResult, 200, headers);
       }
 
-      // Return image
-      const headers = generateSuccessHeaders(config, processed.data);
-      const contentType = getContentTypeFromFormat(processed.format);
+      // Return image (default behavior - just returns favicon)
+      const headers = generateSuccessHeaders(config, processedFavicon.data);
+      const contentType = getContentTypeFromFormat(processedFavicon.format);
 
-      return c.body(new Uint8Array(processed.data), 200, {
+      return c.body(new Uint8Array(processedFavicon.data), 200, {
         ...headers,
         'Content-Type': contentType,
       });
@@ -288,13 +495,17 @@ async function handleFallback(
       }
 
       const result: FaviconResult = {
-        url: apiUrl.toString(),
-        sourceUrl,
-        width,
-        height,
-        format: imageFormat,
-        bytes: buffer.length,
-        source: 'default',
+        favicon: {
+          url: apiUrl.toString(),
+          sourceUrl,
+          width,
+          height,
+          format: imageFormat,
+          bytes: buffer.length,
+          source: 'default',
+        },
+        ogImage: undefined,
+        metadata: {},
       };
 
       const headers = generateDefaultHeaders(config);

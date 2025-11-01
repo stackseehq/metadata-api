@@ -96,8 +96,8 @@ describe('Error Handling', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.source).toBe('default');
-      expect(data.sourceUrl).toBe('default.svg');
+      expect(data.favicon.source).toBe('default');
+      expect(data.favicon.sourceUrl).toBe('default.svg');
     });
   });
 

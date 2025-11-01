@@ -27,11 +27,11 @@ describe('Data URL Support', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.format).toBe('svg');
-      expect(data.source).toBe('link-tag');
-      expect(data.bytes).toBeGreaterThan(0);
+      expect(data.favicon.format).toBe('svg');
+      expect(data.favicon.source).toBe('link-tag');
+      expect(data.favicon.bytes).toBeGreaterThan(0);
       // The sourceUrl should start with "data:" to indicate it's a data URL
-      expect(data.sourceUrl).toStartWith('data:');
+      expect(data.favicon.sourceUrl).toStartWith('data:');
     });
 
     test('should return SVG image from data URL', async () => {
@@ -76,9 +76,9 @@ describe('Data URL Support', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.format).toBe('png');
-      expect(data.width).toBe(64);
-      expect(data.height).toBe(64);
+      expect(data.favicon.format).toBe('png');
+      expect(data.favicon.width).toBe(64);
+      expect(data.favicon.height).toBe(64);
     });
   });
 
@@ -93,7 +93,7 @@ describe('Data URL Support', () => {
 
       const data = await response.json();
       // The format should be detected as 'svg' from the mime type
-      expect(data.format).toBe('svg');
+      expect(data.favicon.format).toBe('svg');
     });
   });
 

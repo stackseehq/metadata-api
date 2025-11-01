@@ -10,14 +10,26 @@ export interface FaviconSource {
   score: number;
 }
 
-export interface FaviconResult {
+export interface ImageInfo {
   url: string; // API URL to fetch this exact processed image
-  sourceUrl: string; // Original favicon URL from the website
+  sourceUrl: string; // Original image URL from the website
   width: number;
   height: number;
   format: string;
   bytes: number; // File size in bytes
   source: string;
+}
+
+export interface PageMetadata {
+  title?: string; // Page title from og:title, twitter:title, or <title>
+  description?: string; // Page description from meta tags
+  siteName?: string; // og:site_name
+}
+
+export interface FaviconResult {
+  favicon: ImageInfo;
+  ogImage?: ImageInfo;
+  metadata: PageMetadata;
 }
 
 export interface ImageProcessOptions {
@@ -51,4 +63,30 @@ export interface WebManifest {
   name?: string;
   short_name?: string;
   [key: string]: unknown;
+}
+
+/**
+ * OpenGraph Image types
+ */
+export interface OGImageSource {
+  url: string;
+  width?: number;
+  height?: number;
+  alt?: string;
+  type?: string;
+  source: 'og:image' | 'twitter:image' | 'schema.org' | 'fallback';
+  score: number;
+}
+
+export interface OGImageResult {
+  url: string; // API URL to fetch this exact processed image
+  sourceUrl: string; // Original OG image URL from the website
+  title?: string; // og:title or twitter:title
+  description?: string; // og:description or twitter:description
+  width: number;
+  height: number;
+  format: string;
+  bytes: number; // File size in bytes
+  source: string;
+  siteName?: string; // og:site_name
 }
