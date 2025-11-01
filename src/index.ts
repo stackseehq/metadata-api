@@ -8,8 +8,9 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { AppConfig } from './lib/config';
 import type { FaviconResult, OGImageResult, ImageInfo, OutputFormat } from './types';
-import { findFavicons, fetchBestFavicon } from './lib/favicon-finder';
-import { findOGImages, fetchBestOGImage } from './lib/og-finder';
+import { fetchBestFavicon } from './lib/favicon-finder';
+import { fetchBestOGImage } from './lib/og-finder';
+import { analyzePage } from './lib/page-analyzer';
 import { processImage } from './lib/image-processor';
 import { queryParamsSchema } from './lib/validators';
 import {
@@ -128,7 +129,7 @@ export function createApp(config: AppConfig) {
 
       const { url, response, size, format, default: defaultImage } = parseResult.data;
 
-      // Find OG images
+      // Analyze page to get OG images and metadata
       const timeoutPromise = new Promise<null>((resolve) =>
         setTimeout(() => resolve(null), config.REQUEST_TIMEOUT)
       );
@@ -144,12 +145,13 @@ export function createApp(config: AppConfig) {
           // oxlint-disable-next-line no-async-promise-executor
           async (resolve) => {
             try {
-              const { images, metadata } = await findOGImages(url, config);
-              if (images == null || images.length === 0) {
+              // Single HTML fetch
+              const pageData = await analyzePage(url, config);
+              if (pageData.ogImages == null || pageData.ogImages.length === 0) {
                 resolve(null);
               } else {
-                const image = await fetchBestOGImage(images, config);
-                resolve(image ? { image, metadata } : null);
+                const image = await fetchBestOGImage(pageData.ogImages, config);
+                resolve(image ? { image, metadata: pageData.metadata } : null);
               }
             } catch {
               resolve(null);
@@ -273,7 +275,7 @@ export function createApp(config: AppConfig) {
 
       const { url, response, size, format, default: defaultImage } = parseResult.data;
 
-      // Find both favicons and OG images in parallel
+      // Analyze page once to get favicons, OG images, and metadata
       const timeoutPromise = new Promise<null>((resolve) =>
         setTimeout(() => resolve(null), config.REQUEST_TIMEOUT)
       );
@@ -290,28 +292,20 @@ export function createApp(config: AppConfig) {
           // oxlint-disable-next-line no-async-promise-executor
           async (resolve) => {
             try {
-              // Fetch favicons and OG images in parallel (they both parse the same HTML)
-              const [faviconData, ogData] = await Promise.all([
-                findFavicons(url, config, size),
-                findOGImages(url, config),
-              ]);
+              // Single HTML fetch - extracts everything in one pass
+              const pageData = await analyzePage(url, config, size);
 
-              // Use metadata from whichever source found it (prefer OG data as it's more complete)
-              const metadata = {
-                title: ogData.metadata.title || faviconData.metadata.title,
-                description: ogData.metadata.description || faviconData.metadata.description,
-                siteName: ogData.metadata.siteName || faviconData.metadata.siteName,
-              };
-
-              // Fetch best images from both sources
+              // Fetch best images from both sources in parallel
               const [favicon, ogImage] = await Promise.all([
-                faviconData.favicons.length > 0
-                  ? fetchBestFavicon(faviconData.favicons, config)
+                pageData.favicons.length > 0
+                  ? fetchBestFavicon(pageData.favicons, config)
                   : null,
-                ogData.images.length > 0 ? fetchBestOGImage(ogData.images, config) : null,
+                pageData.ogImages.length > 0
+                  ? fetchBestOGImage(pageData.ogImages, config)
+                  : null,
               ]);
 
-              resolve({ favicon, ogImage, metadata });
+              resolve({ favicon, ogImage, metadata: pageData.metadata });
             } catch {
               resolve(null);
             }

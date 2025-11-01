@@ -49,7 +49,8 @@ describe('Error Handling', () => {
 
       const data = await response.json();
       expect(data.error).toBeDefined();
-      expect(data.error).toContain('Invalid option');
+      expect(data.error).toContain('Invalid');
+      expect(data.error).toContain('format');
     });
 
     test('should return 400 for invalid output format', async () => {

@@ -73,7 +73,13 @@ const createUrlValidator = (blockPrivateIps: boolean) =>
 export const queryParamsSchema = (blockPrivateIps: boolean) =>
   z.object({
     url: createUrlValidator(blockPrivateIps),
-    response: z.enum(['image', 'json']).default('image'),
+    response: z
+      .string()
+      .optional()
+      .default('image')
+      .refine((val) => val === 'image' || val === 'json', {
+        message: 'Invalid "response" parameter: use "image" or "json"',
+      }) as z.ZodType<'image' | 'json'>,
     size: z
       .string()
       .optional()
@@ -86,7 +92,15 @@ export const queryParamsSchema = (blockPrivateIps: boolean) =>
           .max(512, 'Size must be between 16 and 512 pixels')
           .optional()
       ),
-    format: z.enum(['png', 'jpg', 'webp']).optional(),
+    format: z
+      .string()
+      .optional()
+      .refine(
+        (val) => !val || val === 'png' || val === 'jpg' || val === 'webp',
+        {
+          message: 'Invalid "format" parameter: use "png", "jpg", or "webp" for image conversion. To get JSON response, use "response=json"',
+        }
+      ) as z.ZodType<'png' | 'jpg' | 'webp' | undefined>,
     default: z.url('Default image must be a valid URL').optional(),
   });
 

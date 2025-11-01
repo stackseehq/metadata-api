@@ -8,6 +8,7 @@ import type { OGImageSource } from '../types';
 import type { AppConfig } from './config';
 import { parseDataUrl, validateImage } from './image-processor';
 import { isDataUrl } from './validators';
+import { extractMetadata, type PageMetadata } from './metadata-extractor';
 
 /**
  * Browser-like User-Agent for HTML parsing (sites often block bots for HTML)
@@ -16,23 +17,13 @@ const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 /**
- * Metadata extracted from page
- */
-export interface PageMetadata {
-  title?: string;
-  description?: string;
-  siteName?: string;
-}
-
-/**
  * Find all possible OG image URLs for a given website
  */
 export async function findOGImages(
   url: string,
   config: AppConfig
-): Promise<{ images: OGImageSource[]; metadata: PageMetadata }> {
+): Promise<OGImageSource[]> {
   const images: OGImageSource[] = [];
-  const metadata: PageMetadata = {};
 
   // Ensure URL has protocol
   const targetUrl = url.startsWith('http') ? url : `https://${url}`;
@@ -43,19 +34,6 @@ export async function findOGImages(
     const finalParsedUrl = new URL(finalUrl);
     const finalBaseUrl = `${finalParsedUrl.protocol}//${finalParsedUrl.hostname}`;
     const $ = cheerio.load(html);
-
-    // Extract metadata
-    metadata.title =
-      $('meta[property="og:title"]').attr('content') ||
-      $('meta[name="twitter:title"]').attr('content') ||
-      $('title').text();
-
-    metadata.description =
-      $('meta[property="og:description"]').attr('content') ||
-      $('meta[name="twitter:description"]').attr('content') ||
-      $('meta[name="description"]').attr('content');
-
-    metadata.siteName = $('meta[property="og:site_name"]').attr('content');
 
     // Extract OG images from meta tags
     images.push(...extractFromOGTags($, finalBaseUrl));
@@ -70,10 +48,7 @@ export async function findOGImages(
   }
 
   // Sort by score (highest first) and return
-  return {
-    images: images.sort((a, b) => b.score - a.score),
-    metadata,
-  };
+  return images.sort((a, b) => b.score - a.score);
 }
 
 /**
