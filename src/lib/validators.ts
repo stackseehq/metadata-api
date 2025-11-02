@@ -102,6 +102,11 @@ export const queryParamsSchema = (blockPrivateIps: boolean) =>
         }
       ) as z.ZodType<'png' | 'jpg' | 'webp' | undefined>,
     default: z.url('Default image must be a valid URL').optional(),
+    skipFallback: z
+      .string()
+      .optional()
+      .transform((val) => val === 'true' || val === '1')
+      .pipe(z.boolean().optional()),
   });
 
 export type QueryParams = z.infer<ReturnType<typeof queryParamsSchema>>;

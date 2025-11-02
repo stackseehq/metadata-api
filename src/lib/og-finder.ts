@@ -310,7 +310,7 @@ function resolveUrl(url: string, baseUrl: string): string {
 export async function fetchBestOGImage(
   images: OGImageSource[],
   config: AppConfig
-): Promise<{ data: Buffer; format: string; source: string; url: string } | null> {
+): Promise<{ data: Buffer; format: string; source: string; url: string; isFallback?: boolean } | null> {
   for (const image of images) {
     try {
       let buffer: Buffer;
@@ -344,7 +344,13 @@ export async function fetchBestOGImage(
         const isValid = await validateImage(buffer);
         if (isValid) {
           const format = detectFormat(buffer, mimeType || image.type);
-          return { data: buffer, format, source: image.source, url: image.url };
+          return {
+            data: buffer,
+            format,
+            source: image.source,
+            url: image.url,
+            isFallback: image.isFallback
+          };
         }
       }
     } catch {

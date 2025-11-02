@@ -69,6 +69,7 @@ export async function findFavicons(
       url: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(formattedDomain)}&sz=${size || 64}`,
       source: 'fallback-api',
       score: 1, // Lowest priority - try this last
+      isFallback: true,
     });
   }
 
@@ -278,7 +279,7 @@ function resolveUrl(url: string, baseUrl: string): string {
 export async function fetchBestFavicon(
   favicons: FaviconSource[],
   config: AppConfig
-): Promise<{ data: Buffer; format: string; source: string; url: string } | null> {
+): Promise<{ data: Buffer; format: string; source: string; url: string; isFallback?: boolean } | null> {
   for (const favicon of favicons) {
     try {
       let buffer: Buffer;
@@ -311,7 +312,13 @@ export async function fetchBestFavicon(
         const isValid = await validateImage(buffer);
         if (isValid) {
           const format = detectFormat(buffer, mimeType || favicon.format);
-          return { data: buffer, format, source: favicon.source, url: favicon.url };
+          return {
+            data: buffer,
+            format,
+            source: favicon.source,
+            url: favicon.url,
+            isFallback: favicon.isFallback
+          };
         }
       }
     } catch {

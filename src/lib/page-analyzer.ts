@@ -83,6 +83,7 @@ export async function analyzePage(
       url: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(formattedDomain)}&sz=${size || 64}`,
       source: 'fallback-api',
       score: 1,
+      isFallback: true,
     });
   }
 
@@ -281,6 +282,7 @@ function extractOGFromTags($: cheerio.CheerioAPI, baseUrl: string): OGImageSourc
       type: ogImage.type,
       source: 'og:image',
       score: calculateOGScore(width, height, 'og:image', ogImage.type),
+      isFallback: false,
     });
   }
 
@@ -302,6 +304,7 @@ function extractOGFromTwitterTags($: cheerio.CheerioAPI, baseUrl: string): OGIma
       alt: twitterImageAlt,
       source: 'twitter:image',
       score: calculateOGScore(undefined, undefined, 'twitter:image'),
+      isFallback: false,
     });
   }
 
@@ -340,6 +343,7 @@ function extractOGFromJsonLd($: cheerio.CheerioAPI, baseUrl: string): OGImageSou
                 height: height ? parseInt(String(height), 10) : undefined,
                 source: 'schema.org',
                 score: calculateOGScore(width, height, 'schema.org'),
+                isFallback: false,
               });
             }
           }

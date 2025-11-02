@@ -117,6 +117,7 @@ export function createApp(config: AppConfig) {
         size: c.req.query('size'),
         format: c.req.query('format'),
         default: c.req.query('default'),
+        skipFallback: c.req.query('skipFallback'),
       });
 
       // Handle validation errors
@@ -127,7 +128,7 @@ export function createApp(config: AppConfig) {
         return c.json({ error: errorMessage }, 400, headers);
       }
 
-      const { url, response, size, format, default: defaultImage } = parseResult.data;
+      const { url, response, size, format, default: defaultImage, skipFallback } = parseResult.data;
 
       // Analyze page to get OG images and metadata
       const timeoutPromise = new Promise<null>((resolve) =>
@@ -137,7 +138,7 @@ export function createApp(config: AppConfig) {
       const result = await Promise.race([
         new Promise<
           | {
-              image: { data: Buffer; format: string; source: string; url: string };
+              image: { data: Buffer; format: string; source: string; url: string; isFallback?: boolean };
               metadata: { title?: string; description?: string; siteName?: string };
             }
           | null
@@ -174,10 +175,29 @@ export function createApp(config: AppConfig) {
           error: 'Failed to fetch OG image',
           headers: requestHeaders,
         });
+
+        // If skipFallback is enabled and no OG image found, return 404
+        if (skipFallback) {
+          const headers = generateErrorHeaders(config);
+          if (response === 'json') {
+            return c.json({ error: 'No OG image found (fallback skipped)' }, 404, headers);
+          }
+          return c.body(null, 404, headers);
+        }
+
         return handleFallback(c, config, response, defaultImage, size, format);
       }
 
       const { image, metadata } = result;
+
+      // If skipFallback is enabled and the image is a fallback, return 404
+      if (skipFallback && image.isFallback) {
+        const headers = generateErrorHeaders(config);
+        if (response === 'json') {
+          return c.json({ error: 'No OG image found (fallback skipped)' }, 404, headers);
+        }
+        return c.body(null, 404, headers);
+      }
 
       // Log successful OG image fetch
       logFaviconFetch({
@@ -221,6 +241,7 @@ export function createApp(config: AppConfig) {
           format: processed.format,
           bytes: processed.bytes,
           source: image.source,
+          isFallback: image.isFallback,
         };
 
         const headers = generateSuccessHeaders(config, processed.data);
@@ -263,6 +284,7 @@ export function createApp(config: AppConfig) {
         size: c.req.query('size'),
         format: c.req.query('format'),
         default: c.req.query('default'),
+        skipFallback: c.req.query('skipFallback'),
       });
 
       // Handle validation errors
@@ -273,7 +295,7 @@ export function createApp(config: AppConfig) {
         return c.json({ error: errorMessage }, 400, headers);
       }
 
-      const { url, response, size, format, default: defaultImage } = parseResult.data;
+      const { url, response, size, format, default: defaultImage, skipFallback } = parseResult.data;
 
       // Analyze page once to get favicons, OG images, and metadata
       const timeoutPromise = new Promise<null>((resolve) =>
@@ -332,6 +354,15 @@ export function createApp(config: AppConfig) {
 
       const { favicon, ogImage, metadata } = result;
 
+      // If skipFallback is enabled and the favicon is a fallback, return 404
+      if (skipFallback && favicon.isFallback) {
+        const headers = generateErrorHeaders(config);
+        if (response === 'json') {
+          return c.json({ error: 'No favicon found (fallback skipped)' }, 404, headers);
+        }
+        return c.body(null, 404, headers);
+      }
+
       // Log successful favicon fetch
       logFaviconFetch({
         url,
@@ -372,6 +403,7 @@ export function createApp(config: AppConfig) {
           format: processedFavicon.format,
           bytes: processedFavicon.bytes,
           source: favicon.source,
+          isFallback: favicon.isFallback,
         };
 
         // Build OG image info if available
@@ -398,6 +430,7 @@ export function createApp(config: AppConfig) {
             format: processedOG.format,
             bytes: processedOG.bytes,
             source: ogImage.source,
+            isFallback: ogImage.isFallback,
           };
         }
 
@@ -497,6 +530,7 @@ async function handleFallback(
           format: imageFormat,
           bytes: buffer.length,
           source: 'default',
+          isFallback: true,
         },
         ogImage: undefined,
         metadata: {},

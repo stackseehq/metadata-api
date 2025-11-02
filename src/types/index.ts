@@ -8,6 +8,7 @@ export interface FaviconSource {
   format?: string;
   source: 'link-tag' | 'manifest' | 'fallback' | 'fallback-api';
   score: number;
+  isFallback?: boolean; // True if this is a fallback/default image
 }
 
 export interface ImageInfo {
@@ -18,6 +19,7 @@ export interface ImageInfo {
   format: string;
   bytes: number; // File size in bytes
   source: string;
+  isFallback?: boolean; // True if this is a fallback/default image
 }
 
 export interface PageMetadata {
@@ -74,8 +76,9 @@ export interface OGImageSource {
   height?: number;
   alt?: string;
   type?: string;
-  source: 'og:image' | 'twitter:image' | 'schema.org' | 'fallback';
+  source: 'og:image' | 'twitter:image' | 'schema.org' | 'fallback' | 'fallback-api';
   score: number;
+  isFallback?: boolean; // True if this is a fallback/default image, not a real OG image
 }
 
 export interface OGImageResult {
@@ -89,4 +92,5 @@ export interface OGImageResult {
   bytes: number; // File size in bytes
   source: string;
   siteName?: string; // og:site_name
+  isFallback?: boolean; // True if this is a fallback/default image, not a real OG image
 }

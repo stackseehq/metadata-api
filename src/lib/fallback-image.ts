@@ -13,6 +13,7 @@ interface CachedFallback {
   sourceUrl: string;
   width: number;
   height: number;
+  isFallback: boolean;
 }
 
 // Singleton instance
@@ -36,6 +37,7 @@ async function loadLocalDefaultSvg(): Promise<CachedFallback> {
     sourceUrl: 'default.svg',
     width: processed.width,
     height: processed.height,
+    isFallback: true,
   };
 }
 
@@ -88,6 +90,7 @@ export async function initializeFallbackImage(config: AppConfig): Promise<void> 
       sourceUrl: fallbackUrl,
       width: processed.width,
       height: processed.height,
+      isFallback: true,
     };
 
     logger.info(
@@ -139,7 +142,7 @@ export function getCachedFallback(): CachedFallback {
 export async function fetchCustomDefault(
   url: string,
   config: AppConfig
-): Promise<{ buffer: Buffer; format: string; sourceUrl: string; width: number; height: number }> {
+): Promise<{ buffer: Buffer; format: string; sourceUrl: string; width: number; height: number; isFallback: boolean }> {
   const response = await fetch(url, {
     headers: { 'User-Agent': config.USER_AGENT },
     signal: AbortSignal.timeout(config.REQUEST_TIMEOUT),
@@ -163,5 +166,6 @@ export async function fetchCustomDefault(
     sourceUrl: url,
     width: processed.width,
     height: processed.height,
+    isFallback: true,
   };
 }
