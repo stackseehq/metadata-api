@@ -105,8 +105,7 @@ export const queryParamsSchema = (blockPrivateIps: boolean) =>
     skipFallback: z
       .string()
       .optional()
-      .transform((val) => val === 'true' || val === '1')
-      .pipe(z.boolean().optional()),
+      .transform((val) => (val === 'true' || val === '1')),
   });
 
 export type QueryParams = z.infer<ReturnType<typeof queryParamsSchema>>;

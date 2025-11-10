@@ -305,8 +305,8 @@ export function createApp(config: AppConfig) {
       const result = await Promise.race([
         new Promise<
           | {
-              favicon: { data: Buffer; format: string; source: string; url: string } | null;
-              ogImage: { data: Buffer; format: string; source: string; url: string } | null;
+              favicon: { data: Buffer; format: string; source: string; url: string; isFallback?: boolean } | null;
+              ogImage: { data: Buffer; format: string; source: string; url: string; isFallback?: boolean } | null;
               metadata: { title?: string; description?: string; siteName?: string };
             }
           | null

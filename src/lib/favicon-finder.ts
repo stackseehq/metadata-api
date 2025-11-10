@@ -8,6 +8,7 @@ import type { FaviconSource, WebManifest } from '../types';
 import type { AppConfig } from './config';
 import { parseDataUrl, validateImage } from './image-processor';
 import { isDataUrl } from './validators';
+import { LRUCache } from './cache';
 
 /**
  * Browser-like User-Agent for HTML parsing (sites often block bots for HTML)
@@ -15,6 +16,15 @@ import { isDataUrl } from './validators';
  */
 const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+/**
+ * In-memory cache for fetched favicon images
+ * Reduces memory usage by avoiding re-fetching popular favicons
+ */
+const faviconCache = new LRUCache<{ data: Buffer; format: string; source: string; url: string; isFallback?: boolean }>(
+  200, // Cache up to 200 favicons
+  1800000 // 30 minutes TTL
+);
 
 /**
  * Find all possible favicon URLs for a given website
@@ -282,6 +292,12 @@ export async function fetchBestFavicon(
 ): Promise<{ data: Buffer; format: string; source: string; url: string; isFallback?: boolean } | null> {
   for (const favicon of favicons) {
     try {
+      // Check cache first
+      const cached = faviconCache.get(favicon.url);
+      if (cached) {
+        return cached;
+      }
+
       let buffer: Buffer;
       let mimeType: string | undefined;
 
@@ -312,13 +328,18 @@ export async function fetchBestFavicon(
         const isValid = await validateImage(buffer);
         if (isValid) {
           const format = detectFormat(buffer, mimeType || favicon.format);
-          return {
+          const result = {
             data: buffer,
             format,
             source: favicon.source,
             url: favicon.url,
             isFallback: favicon.isFallback
           };
+
+          // Cache the result
+          faviconCache.set(favicon.url, result);
+
+          return result;
         }
       }
     } catch {

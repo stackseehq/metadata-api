@@ -8,13 +8,22 @@ import type { OGImageSource } from '../types';
 import type { AppConfig } from './config';
 import { parseDataUrl, validateImage } from './image-processor';
 import { isDataUrl } from './validators';
-import { extractMetadata, type PageMetadata } from './metadata-extractor';
+import { LRUCache } from './cache';
 
 /**
  * Browser-like User-Agent for HTML parsing (sites often block bots for HTML)
  */
 const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+/**
+ * In-memory cache for fetched OG images
+ * Reduces memory usage by avoiding re-fetching popular OG images
+ */
+const ogImageCache = new LRUCache<{ data: Buffer; format: string; source: string; url: string; isFallback?: boolean }>(
+  100, // Cache up to 100 OG images
+  1800000 // 30 minutes TTL
+);
 
 /**
  * Find all possible OG image URLs for a given website
@@ -127,7 +136,7 @@ function extractFromOGTags($: cheerio.CheerioAPI, baseUrl: string): OGImageSourc
   });
 
   // For each image, try to find associated metadata
-  $('meta[property^="og:image"]').each((index, element) => {
+  $('meta[property^="og:image"]').each((_, element) => {
     const property = $(element).attr('property');
     const content = $(element).attr('content');
 
@@ -313,6 +322,12 @@ export async function fetchBestOGImage(
 ): Promise<{ data: Buffer; format: string; source: string; url: string; isFallback?: boolean } | null> {
   for (const image of images) {
     try {
+      // Check cache first
+      const cached = ogImageCache.get(image.url);
+      if (cached) {
+        return cached;
+      }
+
       let buffer: Buffer;
       let mimeType: string | undefined;
 
@@ -344,13 +359,18 @@ export async function fetchBestOGImage(
         const isValid = await validateImage(buffer);
         if (isValid) {
           const format = detectFormat(buffer, mimeType || image.type);
-          return {
+          const result = {
             data: buffer,
             format,
             source: image.source,
             url: image.url,
             isFallback: image.isFallback
           };
+
+          // Cache the result
+          ogImageCache.set(image.url, result);
+
+          return result;
         }
       }
     } catch {

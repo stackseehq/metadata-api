@@ -149,9 +149,8 @@ export async function processImage(
       pipeline = applyFormat(pipeline, options.format, options.quality);
     }
 
-    // Process the image
-    const outputBuffer = await pipeline.toBuffer();
-    const outputMetadata = await sharp(outputBuffer).metadata();
+    // Process the image - use resolveWithObject to avoid redundant metadata read
+    const { data: outputBuffer, info: outputMetadata } = await pipeline.toBuffer({ resolveWithObject: true });
 
     return {
       data: outputBuffer,

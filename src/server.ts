@@ -3,11 +3,17 @@
  * Starts the HTTP server with the Hono application
  */
 
+import sharp from 'sharp';
 import { createApp } from './index';
 import { loadConfig } from './lib/config';
 import { logger } from './lib/logger';
 import { initVemetric } from './lib/analytics';
 import { initializeFallbackImage } from './lib/fallback-image';
+
+// Configure Sharp to reduce memory usage
+// Limit concurrent operations to prevent memory spikes
+sharp.concurrency(2); // Max 2 concurrent Sharp operations
+sharp.cache({ memory: 50, files: 0 }); // 50MB memory cache, no file cache
 
 // Load and validate configuration
 const config = loadConfig();
